@@ -1,6 +1,5 @@
 import asyncio
 from asyncio import (
-    AbstractEventLoop,
     StreamReader,
     StreamWriter,
 )
@@ -9,10 +8,7 @@ from email.utils import formatdate
 from functools import wraps
 from http import HTTPStatus
 from logging import getLogger
-from typing import (
-    Dict,
-    Optional,
-)
+from typing import Dict
 from urllib.parse import (
     parse_qsl,
     urlsplit,
@@ -172,7 +168,7 @@ class Handler:
         data_length = await reader.read(ENCRYPTED_DATA_LENGTH)
 
         if not data_length:
-            raise SecurityError('Connection closed')
+            raise SecurityError('Encrypted data is empty')
 
         data_length_int = int.from_bytes(data_length, byteorder='little') + AUTH_TAG_LENGTH
 
@@ -245,8 +241,7 @@ class Handler:
 
 
 class HTTPServer:
-    def __init__(self, routes: dict, loop: Optional[AbstractEventLoop] = None) -> None:
-        self.loop = loop or asyncio.get_event_loop()
+    def __init__(self, routes: dict) -> None:
         self.routes = routes
         self.global_context: dict = {}
         self.handlers: set = set()
@@ -258,10 +253,12 @@ class HTTPServer:
         self.handlers.remove(handler)
 
     def run(self, host: str, port: int):
-        server: Server = self.loop.run_until_complete(asyncio.start_server(self.handler, host, port))
+        loop = asyncio.get_event_loop()
+
+        server: Server = loop.run_until_complete(asyncio.start_server(self.handler, host, port))
 
         try:
-            self.loop.run_forever()
+            loop.run_forever()
         except KeyboardInterrupt:
             pass
 
@@ -269,8 +266,8 @@ class HTTPServer:
             handler.close_connection = True
 
         server.close()
-        self.loop.run_until_complete(server.wait_closed())
-        self.loop.close()
+        loop.run_until_complete(server.wait_closed())
+        loop.close()
 
 
 def encrypted(func):

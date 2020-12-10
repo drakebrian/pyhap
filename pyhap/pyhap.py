@@ -1,7 +1,5 @@
-from asyncio import AbstractEventLoop
 from logging import getLogger
 from socket import inet_aton
-from typing import Optional
 
 from zeroconf import ServiceInfo, Zeroconf
 
@@ -19,12 +17,12 @@ from pyhap.tlv import TlvState
 logger = getLogger('pyhap')
 
 
-def start(config: Config, accessories: Accessories, loop: Optional[AbstractEventLoop] = None):
+def start(config: Config, accessories: Accessories):
     # TODO: increment configuration_number in case hash of accessory list json is changed before starting up mdns
     logger.info('Starting up PyHAP, setup code: %s', config.setup_code)
     mdns_server = MDNSServer(config)
     mdns_server.start()
-    http_server = WebServer(config, accessories, loop)
+    http_server = WebServer(config, accessories)
     http_server.start()
 
 
@@ -75,7 +73,7 @@ class MDNSServer:
 
 
 class WebServer:
-    def __init__(self, config: Config, accessories_obj: Accessories, loop: Optional[AbstractEventLoop] = None) -> None:
+    def __init__(self, config: Config, accessories_obj: Accessories) -> None:
         self.http_server = HTTPServer({
             '/accessories': route.accessories,
             '/characteristics': route.characteristics,
@@ -83,7 +81,7 @@ class WebServer:
             '/pair-setup': route.pair_setup,
             '/pair-verify': route.pair_verify,
             '/pairings': route.pairings,
-        }, loop)
+        })
 
         self.http_server.global_context['accessories'] = accessories_obj
         self.http_server.global_context['config'] = config

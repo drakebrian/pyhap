@@ -1,75 +1,116 @@
-from abc import abstractmethod
-from typing import (
-    List,
-    Type,
-)
+"""This module implements the HAP Service."""
 from uuid import UUID
 
-from pyhap.characteristic import Characteristic
-from pyhap.util import (
-    aduuid_to_uuid,
-    uuid_to_aduuid,
-)
+from pyhap.const import (
+    HAP_REPR_CHARS, HAP_REPR_IID,
+    HAP_REPR_LINKED, HAP_REPR_PRIMARY, HAP_REPR_TYPE)
 
 
 class Service:
-    def __init__(self):
-        self.instance_id = None  # set by bridge
-        self.characteristics: List[Characteristic] = []
+    """A representation of a HAP service.
 
-    @property
-    @abstractmethod
-    def service_uuid(self) -> UUID:
-        raise NotImplementedError()
+    A Service contains multiple characteristics. For example, a
+    TemperatureSensor service has the characteristic CurrentTemperature.
+    """
 
-    def add_characteristic(self, characteristic: Characteristic):
-        self.characteristics.append(characteristic)
+    __slots__ = ('broker', 'characteristics', 'display_name', 'type_id',
+                 'linked_services', 'is_primary_service', 'setter_callback')
 
-    def __json__(self):
-        return {
-            'type': uuid_to_aduuid(self.service_uuid),
-            'iid': self.instance_id,
-            'characteristics': self.characteristics
+    def __init__(self, type_id, display_name=None):
+        """Initialize a new Service object."""
+        self.broker = None
+        self.characteristics = []
+        self.linked_services = []
+        self.display_name = display_name
+        self.type_id = type_id
+        self.is_primary_service = None
+        self.setter_callback = None
+
+    def __repr__(self):
+        """Return the representation of the service."""
+        return '<service display_name={} chars={}>' \
+            .format(self.display_name,
+                    {c.display_name: c.value for c in self.characteristics})
+
+    def add_linked_service(self, service):
+        """Add the given service as "linked" to this Service."""
+        if not any(self.broker.iid_manager.get_iid(service) ==
+                   self.broker.iid_manager.get_iid(original_service)
+                   for original_service in self.linked_services):
+            self.linked_services.append(service)
+
+    def add_characteristic(self, *chars):
+        """Add the given characteristics as "mandatory" for this Service."""
+        for char in chars:
+            if not any(char.type_id == original_char.type_id
+                       for original_char in self.characteristics):
+                char.service = self
+                self.characteristics.append(char)
+
+    def get_characteristic(self, name):
+        """Return a Characteristic object by the given name from this Service.
+
+        :param name: The name of the characteristic to search for.
+        :type name: str
+
+        :raise ValueError if characteristic is not found.
+
+        :return: A characteristic with the given name.
+        :rtype: Characteristic
+        """
+        for char in self.characteristics:
+            if char.display_name == name:
+                return char
+        raise ValueError('Characteristic not found')
+
+    def configure_char(self, char_name, properties=None, valid_values=None,
+                       value=None, setter_callback=None, getter_callback=None):
+        """Helper method to return fully configured characteristic."""
+        char = self.get_characteristic(char_name)
+        if properties or valid_values:
+            char.override_properties(properties, valid_values)
+        if value:
+            char.set_value(value, should_notify=False)
+        if setter_callback:
+            char.setter_callback = setter_callback
+        if getter_callback:
+            char.getter_callback = getter_callback
+        return char
+
+    # pylint: disable=invalid-name
+    def to_HAP(self):
+        """Create a HAP representation of this Service.
+
+        :return: A HAP representation.
+        :rtype: dict.
+        """
+        hap = {
+            HAP_REPR_IID: self.broker.iid_manager.get_iid(self),
+            HAP_REPR_TYPE: str(self.type_id).upper(),
+            HAP_REPR_CHARS: [c.to_HAP() for c in self.characteristics],
         }
 
+        if self.is_primary_service is not None:
+            hap[HAP_REPR_PRIMARY] = self.is_primary_service
 
-def generate_service(name, service_uuid: str) -> Type[Service]:
-    return type(name, (Service,), {
-        'service_uuid': property(lambda self: aduuid_to_uuid(service_uuid))
-    })
+        if self.linked_services:
+            hap[HAP_REPR_LINKED] = []
+            for linked_service in self.linked_services:
+                hap[HAP_REPR_LINKED].append(
+                    linked_service.broker.iid_manager.get_iid(linked_service))
 
+        return hap
 
-AccessoryInformationService = generate_service('AccessoryInformationService', '3e')
-FanService = generate_service('Fan', '40')
-GarageDoorOpenerService = generate_service('GarageDoorOpener', '41')
-LightbulbService = generate_service('LightbulbService', '43')
-LockManagementService = generate_service('LockManagementService', '44')
-LockMechanismService = generate_service('LockMechanismService', '45')
-OutletService = generate_service('OutletService', '47')
-SwitchService = generate_service('SwitchService', '49')
-ThermostatService = generate_service('ThermostatService', '4a')
-AirQualityService = generate_service('AirQualityService', '8d')
-SecuritySystemService = generate_service('SecuritySystemService', '7e')
-CarbonMonoxideSensorService = generate_service('CarbonMonoxideSensorService', '7f')
-ContactSensorService = generate_service('ContactSensorService', '80')
-HumiditySensorService = generate_service('HumiditySensorService', '82')
-LeakSensorService = generate_service('LeakSensorService', '83')
-LightSensorService = generate_service('LightSensorService', '84')
-MotionSensorService = generate_service('MotionSensorService', '85')
-OccupancySensorService = generate_service('MotionSensorService', '86')
-SmokeSensorService = generate_service('SmokeSensorService', '87')
-StatelessProgrammableSwitchService = generate_service('StatelessProgrammableSwitchService', '89')
-TemperatureService = generate_service('TemperatureService', '8A')
-WindowService = generate_service('WindowService', '8B')
-WindowCoveringService = generate_service('WindowCoveringService', '8C')
-BatteryService = generate_service('BatteryService', '96')
-CarbonDioxideSensorService = generate_service('CarbonDioxideSensorService', '97')
-CameraRTPStreamManagementService = generate_service('CameraRTPStreamManagementService', '110')
-MicrophoneService = generate_service('MicrophoneService', '112')
-SpeakerService = generate_service('SpeakerService', '113')
-DoorbellService = generate_service('DoorbellService', '121')
-FanV2Service = generate_service('FanV2Service', 'B7')
-SlatService = generate_service('SlatService', 'B9')
-FilterMaintenanceService = generate_service('FilterMaintenanceService', 'BA')
-AirPurifierService = generate_service('AirPurifierService', 'BB')
-ServiceLabelService = generate_service('ServiceLabelService', 'CC')
+    @classmethod
+    def from_dict(cls, name, json_dict, loader):
+        """Initialize a service object from a dict.
+
+        :param json_dict: Dictionary containing at least the keys `UUID` and
+            `RequiredCharacteristics`
+        :type json_dict: dict
+        """
+        type_id = UUID(json_dict.pop('UUID'))
+        service = cls(type_id, name)
+        for char_name in json_dict['RequiredCharacteristics']:
+            service.add_characteristic(loader.get_char(char_name))
+        return service
