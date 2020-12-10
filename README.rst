@@ -10,6 +10,8 @@ pyhap
 .. image:: https://coveralls.io/repos/github/condemil/pyhap/badge.svg
     :target: https://coveralls.io/github/condemil/pyhap
 
+Forked and patched version of pyhap for use with symphony-homekit.
+
 The project is on early stage, the API may change. Use version pinning to prevent unexpected changes.
 
 Requirements
